@@ -3,8 +3,6 @@ let initAWS = require('./init-aws')
 let chalk = require('chalk')
 let chars = require('../chars')
 
-module.exports.initAWS = initAWS
-module.exports.initArc = initArc
 module.exports = function printBanner(params={}) {
   let {
     disableBanner,
