@@ -13,12 +13,9 @@ module.exports = function initAWS ({arc, needsValidCreds=true}) {
   // AWS SDK intentionally not added to package deps; assume caller already has it
   // eslint-disable-next-line
   let aws = require('aws-sdk')
-  let credentialsMethod = 'SharedIniFileCredentials'
+
   try {
-    let defaultCredsPath = join(homeDir, '.aws', 'credentials')
-    let envCredsPath = process.env.AWS_SHARED_CREDENTIALS_FILE
-    let credsPath = envCredsPath || defaultCredsPath
-    let credsExists = exists(envCredsPath) || exists(defaultCredsPath)
+    let hasCredsFile = exists(join(homeDir, '.aws', 'credentials'))
     arc.aws = arc.aws || []
     let region = arc.aws.find(e=> e[0] === 'region')
     if (region && region[1]) {
@@ -29,51 +26,15 @@ module.exports = function initAWS ({arc, needsValidCreds=true}) {
      */
     // Allow local cred file to be overriden by env vars
     let envOverride = process.env.ARC_AWS_CREDS === 'env'
-    if (credsExists && !envOverride) {
-      let profile = process.env.AWS_PROFILE
-      aws.config.credentials = []
-      let arcProfile = arc.aws.find(e => e[0] === 'profile')
-      if (arcProfile && arcProfile[1]) {
-        process.env.AWS_PROFILE = profile = arcProfile[1]
+    if (hasCredsFile && !envOverride) {
+      let profile = arc.aws.find(e=> e[0] === 'profile')
+      process.env.ARC_AWS_CREDS = 'profile'
+      if (profile && profile[1]) {
+        process.env.AWS_PROFILE = profile
       }
-
-      let init = new aws.IniLoader()
-      let opts = {
-        filename: credsPath
-      }
-
-      let profileData =  init.loadFrom(opts)
-      if (!profile) profile = process.env.AWS_PROFILE = 'default'
-      process.env.ARC_AWS_CREDS = 'missing'
-
-      if (profileData[profile]) {
-        process.env.ARC_AWS_CREDS = 'profile'
-
-        if (profileData[profile].credential_process) credentialsMethod = 'ProcessCredentials'
-        aws.config.credentials = new aws[credentialsMethod]({
-          ...opts,
-          profile: process.env.AWS_PROFILE
-        })
-      } else {
-        delete process.env.AWS_PROFILE
-      }
+      credentialCheck()
     }
-    else {
-      let hasEnvVars = process.env.AWS_ACCESS_KEY_ID &&
-        process.env.AWS_SECRET_ACCESS_KEY
-      if (hasEnvVars) {
-        process.env.ARC_AWS_CREDS = 'env'
-        let params = {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-        }
-        if (process.env.AWS_SESSION_TOKEN) {
-          params.sessionToken = process.env.AWS_SESSION_TOKEN
-        }
-        aws.config.credentials = new aws.Credentials(params)
-      }
-    }
-    credentialCheck()
+
     /**
      * Final credential check to ensure we meet the cred needs of Arc various packages
      * - Packages that **need** valid creds should be made aware that none are available (ARC_AWS_CREDS = 'missing')
@@ -81,7 +42,7 @@ module.exports = function initAWS ({arc, needsValidCreds=true}) {
      */
     function credentialCheck() {
       let creds = aws.config.credentials
-      let noCreds = !creds || process.env.ARC_AWS_CREDS == 'missing'
+      let noCreds = !creds || creds && !creds.accessKeyId
       if (noCreds && needsValidCreds) {
         // Set missing creds flag and let consuming modules handle as necessary
         process.env.ARC_AWS_CREDS = 'missing'
